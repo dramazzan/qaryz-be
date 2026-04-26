@@ -1,7 +1,7 @@
 import { createBackendApp } from "@/backend/app";
 import { prisma } from "@/lib/prisma";
 
-const port = Number(process.env.BACKEND_PORT ?? process.env.PORT ?? 4000);
+const port = Number(process.env.PORT ?? process.env.BACKEND_PORT ?? 4000);
 const app = createBackendApp();
 
 async function start() {
@@ -16,7 +16,7 @@ async function start() {
   }
 
   const server = app.listen(port, () => {
-    console.log(`Express API listening on http://127.0.0.1:${port}`);
+    console.log(`Express API listening on port ${port}`);
   });
 
   async function shutdown() {

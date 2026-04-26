@@ -231,7 +231,7 @@ function getBackendPublicOrigin(request: Request) {
 
   const forwardedProto = request.get("x-forwarded-proto")?.split(",")[0]?.trim();
   const protocol = forwardedProto || request.protocol;
-  const host = request.get("host") ?? `localhost:${process.env.BACKEND_PORT ?? 4000}`;
+  const host = request.get("host") ?? `localhost:${process.env.PORT ?? process.env.BACKEND_PORT ?? 4000}`;
 
   return `${protocol}://${host}`;
 }

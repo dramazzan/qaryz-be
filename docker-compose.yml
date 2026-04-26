@@ -7,7 +7,6 @@ services:
       - .env
     environment:
       NODE_ENV: production
-      BACKEND_PORT: "4000"
       PORT: "4000"
       FRONTEND_ORIGIN: "${FRONTEND_ORIGIN:-https://qaryz-fe.vercel.app}"
     ports:
