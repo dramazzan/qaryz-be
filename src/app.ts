@@ -175,6 +175,14 @@ export function createBackendApp() {
     });
   });
 
+  app.get("/health/db", async (_request, response) => {
+    await prisma.$runCommandRaw({ ping: 1 });
+    response.json({
+      ok: true,
+      database: "reachable"
+    });
+  });
+
   app.all("/api/cron/notifications", async (request, response) => {
     assertCronAuthorized(request);
 

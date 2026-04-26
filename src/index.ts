@@ -7,6 +7,7 @@ const app = createBackendApp();
 async function start() {
   try {
     await prisma.$connect();
+    await prisma.$runCommandRaw({ ping: 1 });
     console.log("Database connection established");
   } catch (error) {
     console.error("Failed to connect to database:", error);

@@ -26,3 +26,5 @@ docker compose up --build
 ```
 
 For Render, set the service root directory to `backend`, use Docker deployment, and set the backend environment variables from `.env.example`.
+
+MongoDB Atlas must allow connections from the Render backend. In Atlas, open Network Access and add the Render outbound IPs, or add `0.0.0.0/0` while testing.

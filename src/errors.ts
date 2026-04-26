@@ -11,6 +11,39 @@ export class HttpError extends Error {
   }
 }
 
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "";
+}
+
+function getPrismaErrorCode(error: unknown) {
+  if (!error || typeof error !== "object" || !("code" in error)) {
+    return null;
+  }
+
+  return typeof error.code === "string" ? error.code : null;
+}
+
+function isPrismaError(error: unknown) {
+  if (!error || typeof error !== "object" || !("name" in error)) {
+    return false;
+  }
+
+  return typeof error.name === "string" && error.name.startsWith("PrismaClient");
+}
+
+function isDatabaseConnectionError(error: unknown) {
+  const message = getErrorMessage(error);
+  const code = getPrismaErrorCode(error);
+
+  return (
+    code === "P1001" ||
+    message.includes("Server selection timeout") ||
+    message.includes("No available servers") ||
+    message.includes("ReplicaSetNoPrimary") ||
+    message.includes("received fatal alert")
+  );
+}
+
 function getErrorResponse(error: unknown) {
   if (error instanceof HttpError) {
     return {
@@ -33,9 +66,23 @@ function getErrorResponse(error: unknown) {
     };
   }
 
+  if (isDatabaseConnectionError(error)) {
+    return {
+      status: 503,
+      message: "База данных временно недоступна. Проверьте DATABASE_URL и доступ MongoDB Atlas для backend-сервера."
+    };
+  }
+
+  if (isPrismaError(error)) {
+    return {
+      status: 500,
+      message: "Ошибка базы данных"
+    };
+  }
+
   return {
     status: 500,
-    message: error instanceof Error ? error.message : "Что-то пошло не так"
+    message: process.env.NODE_ENV === "production" ? "Что-то пошло не так" : getErrorMessage(error) || "Что-то пошло не так"
   };
 }
 
