@@ -21,4 +21,4 @@ RUN DATABASE_URL="mongodb://127.0.0.1:27017/qaryz" npm run prisma:generate
 
 EXPOSE 4000
 
-CMD ["npm", "run", "start:api"]
+CMD ["npm", "start"]

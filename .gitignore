@@ -1,0 +1,14 @@
+node_modules
+coverage
+dist
+build
+*.tsbuildinfo
+*.log
+.DS_Store
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+!.env.example
+prisma/dev.db
