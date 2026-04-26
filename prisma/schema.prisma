@@ -1,0 +1,264 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum GroupRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum ExpenseParticipantStatus {
+  OPEN
+  SETTLED
+}
+
+enum DirectDebtStatus {
+  OPEN
+  SETTLED
+}
+
+enum NotificationType {
+  EXPENSE_CREATED
+  DIRECT_DEBT_CREATED
+  DIRECT_DEBT_UPDATED
+  DEBT_SETTLED
+  GROUP_JOINED
+}
+
+enum EmailDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model User {
+  id                  String               @id @default(auto()) @map("_id") @db.ObjectId
+  name                String?
+  email               String?              @unique
+  emailVerified       DateTime?
+  image               String?
+  accounts            Account[]
+  sessions            Session[]
+  createdGroups       Group[]              @relation("GroupCreatedBy")
+  groupMemberships    GroupMember[]
+  createdInvites      GroupInvite[]        @relation("InviteCreatedBy")
+  paidExpenses        Expense[]            @relation("ExpensePayer")
+  expenseParticipants ExpenseParticipant[]
+  lentDebts           DirectDebt[]         @relation("DebtLender")
+  borrowedDebts       DirectDebt[]         @relation("DebtBorrower")
+  createdDebts        DirectDebt[]         @relation("DebtCreatedBy")
+  updatedDebts        DirectDebt[]         @relation("DebtUpdatedBy")
+  settledDebts        DirectDebt[]         @relation("DebtSettledBy")
+  settledShares       ExpenseParticipant[] @relation("ExpenseParticipantSettledBy")
+  notifications       Notification[]
+  emails              EmailDelivery[]
+  friendshipsAsA      Friendship[]         @relation("FriendshipUserA")
+  friendshipsAsB      Friendship[]         @relation("FriendshipUserB")
+  createdFriendships  Friendship[]         @relation("FriendshipCreatedBy")
+  historyClearedAt    DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+model Friendship {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  userAId     String   @db.ObjectId
+  userBId     String   @db.ObjectId
+  createdById String   @db.ObjectId
+  createdAt   DateTime @default(now())
+
+  userA     User @relation("FriendshipUserA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB     User @relation("FriendshipUserB", fields: [userBId], references: [id], onDelete: Cascade)
+  createdBy User @relation("FriendshipCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@unique([userAId, userBId])
+  @@index([userAId])
+  @@index([userBId])
+}
+
+model Account {
+  id                String  @id @default(auto()) @map("_id") @db.ObjectId
+  userId            String  @db.ObjectId
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  sessionToken String   @unique
+  userId       String   @db.ObjectId
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Group {
+  id           String       @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
+  currencyCode String
+  createdById  String       @db.ObjectId
+  createdBy    User         @relation("GroupCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  members      GroupMember[]
+  invite       GroupInvite?
+  expenses     Expense[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+model GroupMember {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  groupId   String    @db.ObjectId
+  userId    String    @db.ObjectId
+  role      GroupRole @default(MEMBER)
+  createdAt DateTime  @default(now())
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([userId])
+  @@index([groupId])
+}
+
+model GroupInvite {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  groupId     String   @unique @db.ObjectId
+  code        String   @unique
+  createdById String   @db.ObjectId
+  createdBy   User     @relation("InviteCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Expense {
+  id           String               @id @default(auto()) @map("_id") @db.ObjectId
+  groupId      String               @db.ObjectId
+  payerId      String               @db.ObjectId
+  title        String
+  note         String?
+  amountMinor  Int
+  currencyCode String
+  expenseDate  DateTime
+  receiptPath  String?
+  createdAt    DateTime             @default(now())
+
+  group        Group                @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  payer        User                 @relation("ExpensePayer", fields: [payerId], references: [id], onDelete: Cascade)
+  participants ExpenseParticipant[]
+
+  @@index([payerId, createdAt])
+  @@index([groupId, createdAt])
+}
+
+model ExpenseParticipant {
+  id          String                   @id @default(auto()) @map("_id") @db.ObjectId
+  expenseId   String                   @db.ObjectId
+  userId      String                   @db.ObjectId
+  shareMinor  Int
+  status      ExpenseParticipantStatus @default(OPEN)
+  settledAt   DateTime?
+  settledById String?                  @db.ObjectId
+  createdAt   DateTime                 @default(now())
+
+  expense   Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  settledBy User?   @relation("ExpenseParticipantSettledBy", fields: [settledById], references: [id], onDelete: SetNull)
+
+  @@unique([expenseId, userId])
+  @@index([userId, status])
+  @@index([status, settledAt])
+}
+
+model DirectDebt {
+  id           String           @id @default(auto()) @map("_id") @db.ObjectId
+  lenderId     String?          @db.ObjectId
+  borrowerId   String?          @db.ObjectId
+  createdById  String           @db.ObjectId
+  updatedById  String?          @db.ObjectId
+  settledById  String?          @db.ObjectId
+  externalCounterpartyName  String?
+  externalCounterpartyEmail String?
+  title        String
+  note         String?
+  amountMinor  Int
+  currencyCode String
+  debtDate     DateTime
+  status       DirectDebtStatus @default(OPEN)
+  settledAt    DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  lender    User? @relation("DebtLender", fields: [lenderId], references: [id], onDelete: SetNull)
+  borrower  User? @relation("DebtBorrower", fields: [borrowerId], references: [id], onDelete: SetNull)
+  createdBy User  @relation("DebtCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  updatedBy User? @relation("DebtUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  settledBy User? @relation("DebtSettledBy", fields: [settledById], references: [id], onDelete: SetNull)
+
+  @@index([lenderId, status, updatedAt])
+  @@index([borrowerId, status, updatedAt])
+  @@index([createdById])
+}
+
+model Notification {
+  id        String           @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String           @db.ObjectId
+  type      NotificationType
+  title     String
+  message   String
+  link      String?
+  metadata  Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emails EmailDelivery[]
+
+  @@index([userId, readAt, createdAt])
+}
+
+model EmailDelivery {
+  id             String              @id @default(auto()) @map("_id") @db.ObjectId
+  userId         String              @db.ObjectId
+  notificationId String?             @db.ObjectId
+  toEmail        String
+  subject        String
+  body           String
+  status         EmailDeliveryStatus @default(PENDING)
+  attempts       Int                 @default(0)
+  sentAt         DateTime?
+  lastAttemptAt  DateTime?
+  lastError      String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notification Notification? @relation(fields: [notificationId], references: [id], onDelete: SetNull)
+}
