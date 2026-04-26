@@ -11,10 +11,12 @@ const GOOGLE_PROVIDER = "google";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 const SESSION_CACHE_MAX_AGE_MS = 30 * 1000;
 const OAUTH_COOKIE_MAX_AGE_SECONDS = 60 * 10;
+const SESSION_HANDOFF_MAX_AGE_MS = 60 * 1000;
 
 export const SESSION_COOKIE_NAME = "qaryz_session";
 const OAUTH_STATE_COOKIE_NAME = "qaryz_oauth_state";
 const OAUTH_VERIFIER_COOKIE_NAME = "qaryz_oauth_verifier";
+const OAUTH_RETURN_TO_COOKIE_NAME = "qaryz_oauth_return_to";
 
 export type AuthenticatedUser = {
   id: string;
@@ -31,6 +33,12 @@ type CachedSessionUser = {
   user: AuthenticatedUser;
   sessionExpires: Date;
   cachedUntil: number;
+};
+
+type SessionHandoff = {
+  sessionToken: string;
+  sessionExpires: Date;
+  expiresAt: number;
 };
 
 type GoogleTokenResponse = {
@@ -53,6 +61,7 @@ type GoogleUserInfo = {
 };
 
 const sessionUserCache = new Map<string, CachedSessionUser>();
+const sessionHandoffCache = new Map<string, SessionHandoff>();
 
 function parseCookieHeader(header: string | undefined) {
   const cookies = new Map<string, string>();
@@ -144,6 +153,7 @@ function clearAuthCookie(response: Response, name: string) {
 function clearOAuthCookies(response: Response) {
   clearAuthCookie(response, OAUTH_STATE_COOKIE_NAME);
   clearAuthCookie(response, OAUTH_VERIFIER_COOKIE_NAME);
+  clearAuthCookie(response, OAUTH_RETURN_TO_COOKIE_NAME);
 }
 
 function setSessionCookie(response: Response, sessionToken: string, expires: Date) {
@@ -168,6 +178,40 @@ function createRandomToken(byteLength = 32) {
 
 function createCodeChallenge(verifier: string) {
   return createHash("sha256").update(verifier).digest("base64url");
+}
+
+function cleanupExpiredSessionHandoffs() {
+  const now = Date.now();
+
+  for (const [code, handoff] of sessionHandoffCache) {
+    if (handoff.expiresAt <= now) {
+      sessionHandoffCache.delete(code);
+    }
+  }
+}
+
+function createSessionHandoff(sessionToken: string, sessionExpires: Date) {
+  cleanupExpiredSessionHandoffs();
+
+  const code = createRandomToken();
+  sessionHandoffCache.set(code, {
+    sessionToken,
+    sessionExpires,
+    expiresAt: Date.now() + SESSION_HANDOFF_MAX_AGE_MS
+  });
+
+  return code;
+}
+
+function consumeSessionHandoff(code: string) {
+  const handoff = sessionHandoffCache.get(code);
+  sessionHandoffCache.delete(code);
+
+  if (!handoff || handoff.expiresAt <= Date.now()) {
+    return null;
+  }
+
+  return handoff;
 }
 
 function getFirstFrontendOrigin() {
@@ -211,9 +255,52 @@ function redirectToFrontend(response: Response, path = "/") {
   response.redirect(new URL(path, getFirstFrontendOrigin()).toString());
 }
 
-function redirectToLogin(response: Response, error: string) {
+function normalizeReturnTo(value: string | null | undefined) {
+  if (!value) {
+    return "/";
+  }
+
+  const trimmed = value.trim();
+
+  if (!trimmed || trimmed.length > 2048 || !trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return "/";
+  }
+
+  try {
+    const frontendOrigin = getFirstFrontendOrigin();
+    const url = new URL(trimmed, frontendOrigin);
+
+    if (url.origin !== frontendOrigin) {
+      return "/";
+    }
+
+    const path = `${url.pathname}${url.search}${url.hash}`;
+
+    return path.startsWith("/login") || path.startsWith("/auth/complete") ? "/" : path;
+  } catch {
+    return "/";
+  }
+}
+
+function getAuthCompletePath(code: string, returnTo: string) {
+  const url = new URL("/auth/complete", getFirstFrontendOrigin());
+  url.searchParams.set("code", code);
+
+  if (returnTo !== "/") {
+    url.searchParams.set("returnTo", returnTo);
+  }
+
+  return `${url.pathname}${url.search}`;
+}
+
+function redirectToLogin(response: Response, error: string, returnTo = "/") {
   const url = new URL("/login", getFirstFrontendOrigin());
   url.searchParams.set("error", error);
+
+  if (returnTo !== "/") {
+    url.searchParams.set("returnTo", returnTo);
+  }
+
   response.redirect(url.toString());
 }
 
@@ -393,6 +480,7 @@ export async function redirectToGoogle(request: Request, response: Response) {
   const { clientId } = getGoogleCredentials();
   const state = createRandomToken();
   const verifier = createRandomToken(64);
+  const returnTo = normalizeReturnTo(getQueryValue(request.query.returnTo));
   const authorizationUrl = new URL(GOOGLE_AUTHORIZATION_URL);
 
   authorizationUrl.searchParams.set("client_id", clientId);
@@ -406,14 +494,17 @@ export async function redirectToGoogle(request: Request, response: Response) {
 
   setTemporaryCookie(response, OAUTH_STATE_COOKIE_NAME, state);
   setTemporaryCookie(response, OAUTH_VERIFIER_COOKIE_NAME, verifier);
+  setTemporaryCookie(response, OAUTH_RETURN_TO_COOKIE_NAME, returnTo);
 
   response.redirect(authorizationUrl.toString());
 }
 
 export async function handleGoogleCallback(request: Request, response: Response) {
+  const returnTo = normalizeReturnTo(getCookie(request, OAUTH_RETURN_TO_COOKIE_NAME));
+
   if (getQueryValue(request.query.error)) {
     clearOAuthCookies(response);
-    redirectToLogin(response, "google");
+    redirectToLogin(response, "google", returnTo);
     return;
   }
 
@@ -425,7 +516,7 @@ export async function handleGoogleCallback(request: Request, response: Response)
   clearOAuthCookies(response);
 
   if (!code || !state || !expectedState || state !== expectedState || !verifier) {
-    redirectToLogin(response, "state");
+    redirectToLogin(response, "state", returnTo);
     return;
   }
 
@@ -436,7 +527,23 @@ export async function handleGoogleCallback(request: Request, response: Response)
 
   cacheSessionUser(session.sessionToken, user, session.expires);
   setSessionCookie(response, session.sessionToken, session.expires);
-  redirectToFrontend(response);
+  redirectToFrontend(response, getAuthCompletePath(createSessionHandoff(session.sessionToken, session.expires), returnTo));
+}
+
+export async function handleSessionExchange(request: Request, response: Response) {
+  const body = request.body as { code?: unknown } | undefined;
+  const code = typeof body?.code === "string" ? body.code : "";
+  const handoff = consumeSessionHandoff(code);
+
+  if (!handoff) {
+    throw new HttpError(401, "Сессия входа истекла. Попробуйте войти снова.");
+  }
+
+  response.json({
+    sessionToken: handoff.sessionToken,
+    expires: handoff.sessionExpires.toISOString(),
+    maxAge: SESSION_MAX_AGE_SECONDS
+  });
 }
 
 export async function getCurrentUser(request: Request, response: Response) {

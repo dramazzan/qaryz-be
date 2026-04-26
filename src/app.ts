@@ -8,6 +8,7 @@ import {
   getAuthenticatedUser,
   getCurrentUser,
   handleGoogleCallback,
+  handleSessionExchange,
   logout,
   redirectToGoogle,
   requireAuth
@@ -196,6 +197,7 @@ export function createBackendApp() {
 
   app.get("/auth/google", redirectToGoogle);
   app.get("/auth/google/callback", handleGoogleCallback);
+  app.post("/auth/session/exchange", handleSessionExchange);
   app.get("/auth/me", requireAuth, getCurrentUser);
   app.post("/auth/logout", logout);
 
