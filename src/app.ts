@@ -63,7 +63,7 @@ const upload = multer({
 type BodyRecord = Record<string, unknown>;
 
 function getAllowedOrigins() {
-  return (process.env.FRONTEND_ORIGIN ?? "http://localhost:3000")
+  return (process.env.FRONTEND_ORIGIN ?? "https://qaryz-fe.vercel.app")
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);

@@ -171,14 +171,15 @@ function createCodeChallenge(verifier: string) {
 }
 
 function getFirstFrontendOrigin() {
-  return (process.env.FRONTEND_ORIGIN ?? "http://localhost:3000")
+  return (process.env.FRONTEND_ORIGIN ?? "https://qaryz-fe.vercel.app")
     .split(",")[0]
     .trim()
     .replace(/\/$/, "");
 }
 
 function getBackendPublicOrigin(request: Request) {
-  const configured = process.env.BACKEND_PUBLIC_ORIGIN ?? process.env.NEXT_PUBLIC_BACKEND_ORIGIN;
+  const configured =
+    process.env.BACKEND_PUBLIC_ORIGIN ?? process.env.NEXT_PUBLIC_BACKEND_ORIGIN ?? process.env.BACKEND_URL;
 
   if (configured) {
     return configured.replace(/\/$/, "");

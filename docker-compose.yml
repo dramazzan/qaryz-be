@@ -9,7 +9,7 @@ services:
       NODE_ENV: production
       BACKEND_PORT: "4000"
       PORT: "4000"
-      FRONTEND_ORIGIN: "${FRONTEND_ORIGIN:-http://localhost:3000}"
+      FRONTEND_ORIGIN: "${FRONTEND_ORIGIN:-https://qaryz-fe.vercel.app}"
     ports:
       - "4000:4000"
     restart: unless-stopped
@@ -21,8 +21,8 @@ services:
     environment:
       NODE_ENV: production
       BACKEND_URL: "http://backend:4000"
-      BACKEND_PUBLIC_ORIGIN: "${BACKEND_PUBLIC_ORIGIN:-http://localhost:4000}"
-      NEXT_PUBLIC_BACKEND_ORIGIN: "${BACKEND_PUBLIC_ORIGIN:-http://localhost:4000}"
+      BACKEND_PUBLIC_ORIGIN: "${BACKEND_PUBLIC_ORIGIN:-https://qaryz-be.onrender.com}"
+      NEXT_PUBLIC_BACKEND_ORIGIN: "${BACKEND_PUBLIC_ORIGIN:-https://qaryz-be.onrender.com}"
     ports:
       - "3000:3000"
     depends_on:
