@@ -410,6 +410,54 @@ export async function getFriendsData(userId: string) {
   });
 }
 
+export async function getPlatformUsersData(userId: string) {
+  const [users, friendships] = await Promise.all([
+    prisma.user.findMany({
+      where: {
+        id: {
+          not: userId
+        }
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        image: true,
+        createdAt: true
+      }
+    }),
+    prisma.friendship.findMany({
+      where: {
+        OR: [{ userAId: userId }, { userBId: userId }]
+      },
+      select: {
+        userAId: true,
+        userBId: true,
+        createdAt: true
+      }
+    })
+  ]);
+
+  const friendshipDates = new Map<string, Date>();
+
+  for (const friendship of friendships) {
+    const friendId = friendship.userAId === userId ? friendship.userBId : friendship.userAId;
+    friendshipDates.set(friendId, friendship.createdAt);
+  }
+
+  return users
+    .map((platformUser) => ({
+      id: platformUser.id,
+      name: platformUser.name ?? platformUser.email ?? "Пользователь",
+      email: platformUser.email ?? "",
+      image: platformUser.image,
+      createdAt: platformUser.createdAt,
+      isFriend: friendshipDates.has(platformUser.id),
+      friendshipCreatedAt: friendshipDates.get(platformUser.id) ?? null
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, "ru"));
+}
+
 export async function getRecentContacts(userId: string) {
   const [memberships, debts, friends] = await Promise.all([
     prisma.groupMember.findMany({

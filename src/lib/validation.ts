@@ -52,9 +52,15 @@ export const createDirectDebtSchema = z
     path: ["borrowerId"]
   });
 
-export const addFriendSchema = z.object({
-  email: z.string().trim().email("Введите корректный email")
-});
+export const addFriendSchema = z
+  .object({
+    email: z.string().trim().email("Введите корректный email").optional(),
+    userId: z.string().trim().regex(/^[0-9a-f]{24}$/i, "Пользователь не найден").optional()
+  })
+  .refine((value) => value.email || value.userId, {
+    message: "Выберите пользователя или введите email",
+    path: ["email"]
+  });
 
 export const updateDirectDebtSchema = z.object({
   debtId: z.string().min(1, "Долг не найден"),

@@ -23,6 +23,7 @@ import {
   getFriendsData,
   getGroupDetailData,
   getGroupsData,
+  getPlatformUsersData,
   getProfileData,
   getRecentContacts,
   getUnreadNotificationCount,
@@ -228,23 +229,36 @@ export function createBackendApp() {
     response.json(await getFriendsData(user.id));
   });
 
+  app.get("/api/users", async (request, response) => {
+    const user = getAuthenticatedUser(request);
+    response.json(await getPlatformUsersData(user.id));
+  });
+
   app.post("/api/friends", async (request, response) => {
     const user = getAuthenticatedUser(request);
     const parsed = addFriendSchema.parse({
-      email: getBodyValue(request.body, "email")
+      email: getOptionalBodyValue(request.body, "email"),
+      userId: getOptionalBodyValue(request.body, "userId")
     });
 
-    const friend = await prisma.user.findFirst({
-      where: {
-        email: {
-          equals: parsed.email,
-          mode: "insensitive"
+    const friend = parsed.userId
+      ? await prisma.user.findUnique({
+          where: {
+            id: parsed.userId
+          }
+        })
+      : await prisma.user.findFirst({
+          where: {
+            email: {
+              equals: parsed.email!,
+              mode: "insensitive"
+            }
+          }
         }
-      }
-    });
+      );
 
     if (!friend) {
-      throw new HttpError(404, "Пользователь с таким email не найден");
+      throw new HttpError(404, "Пользователь не найден");
     }
 
     if (friend.id === user.id) {
