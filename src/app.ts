@@ -32,7 +32,7 @@ import {
   canManageGroup
 } from "@/backend/queries";
 import { sendPendingEmails } from "@/lib/email";
-import { parseMoneyToMinorUnits } from "@/lib/money";
+import { formatMinorUnits, parseMoneyToMinorUnits } from "@/lib/money";
 import { createNotifications } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
 import { splitExpenseAmount } from "@/lib/split";
@@ -98,6 +98,14 @@ function getBodyValues(body: BodyRecord, key: string) {
 
 function getDirectDebtUserIds(...userIds: Array<string | null | undefined>) {
   return userIds.filter((userId): userId is string => Boolean(userId));
+}
+
+async function sendPendingEmailsSafely(context: string) {
+  try {
+    await sendPendingEmails();
+  } catch (error) {
+    console.error(`Failed to send pending emails after ${context}:`, error);
+  }
 }
 
 async function createUniqueInviteCode() {
@@ -757,7 +765,7 @@ export function createBackendApp() {
     }
 
     if (!counterparty && !parsed.externalCounterpartyName) {
-      throw new HttpError(404, "Пользователь с таким email не найден. Введите имя человека без аккаунта");
+      throw new HttpError(404, "Выберите пользователя платформы или введите имя человека без аккаунта");
     }
 
     if (counterparty?.id === user.id) {
@@ -767,6 +775,7 @@ export function createBackendApp() {
     const amountMinor = parseMoneyToMinorUnits(parsed.amount);
     const lenderId = parsed.direction === "owed_to_me" ? user.id : (counterparty?.id ?? null);
     const borrowerId = parsed.direction === "owed_to_me" ? (counterparty?.id ?? null) : user.id;
+    const counterpartyId = parsed.direction === "owed_to_me" ? borrowerId : lenderId;
 
     const debt = await prisma.directDebt.create({
       data: {
@@ -784,15 +793,26 @@ export function createBackendApp() {
       }
     });
 
-    await createNotifications({
-      userIds: getDirectDebtUserIds(lenderId, borrowerId),
-      type: NotificationType.DIRECT_DEBT_CREATED,
-      title: `${parsed.title} создан`,
-      message: `${user.name ?? user.email ?? "Кто-то"} создал(а) личный долг.`,
-      link: `/activity/debt/${debt.id}`,
-      subject: `Новый личный долг: ${parsed.title}`,
-      body: `${user.name ?? user.email ?? "Кто-то"} создал(а) личный долг «${parsed.title}».`
-    });
+    if (counterpartyId) {
+      const actorName = user.name ?? user.email ?? "Пользователь";
+      const amount = formatMinorUnits(amountMinor, parsed.currencyCode);
+      const counterpartyOwesActor = parsed.direction === "owed_to_me";
+      const debtMessage = counterpartyOwesActor
+        ? `Вы должны ${actorName} ${amount}.`
+        : `${actorName} должен(на) вам ${amount}.`;
+
+      await createNotifications({
+        userIds: getDirectDebtUserIds(counterpartyId),
+        type: NotificationType.DIRECT_DEBT_CREATED,
+        title: `${parsed.title}: ${counterpartyOwesActor ? "вы должны" : "вам должны"}`,
+        message: debtMessage,
+        link: `/activity/debt/${debt.id}`,
+        subject: `Новая запись долга: ${parsed.title}`,
+        body: `${debtMessage}\n\nЗапись: «${parsed.title}».\nОткройте Qaryz, чтобы посмотреть детали.`
+      });
+
+      await sendPendingEmailsSafely("direct debt creation");
+    }
 
     response.status(201).json({
       id: debt.id

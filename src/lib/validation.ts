@@ -48,7 +48,7 @@ export const createDirectDebtSchema = z
     externalCounterpartyName: z.string().trim().min(2, "Имя должно быть не короче 2 символов").max(60, "Имя слишком длинное").optional()
   })
   .refine((value) => value.borrowerId || value.borrowerEmail || value.externalCounterpartyName, {
-    message: "Выберите человека, введите email или имя",
+    message: "Выберите пользователя платформы или введите имя",
     path: ["borrowerId"]
   });
 

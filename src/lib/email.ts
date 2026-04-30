@@ -1,25 +1,38 @@
 import { EmailDeliveryStatus } from "@prisma/client";
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 
 import { prisma } from "@/lib/prisma";
 
-function getResendClient() {
-  const apiKey = process.env.RESEND_API_KEY;
+function getGoogleSmtpConfig() {
+  const user = process.env.GOOGLE_SMTP_USER;
+  const pass = process.env.GOOGLE_SMTP_APP_PASSWORD;
 
-  if (!apiKey) {
-    throw new Error("Не настроен Resend API key");
+  if (!user) {
+    throw new Error("Не настроен GOOGLE_SMTP_USER");
   }
 
-  return new Resend(apiKey);
+  if (!pass) {
+    throw new Error("Не настроен GOOGLE_SMTP_APP_PASSWORD");
+  }
+
+  return {
+    user,
+    pass,
+    from: process.env.GOOGLE_SMTP_FROM ?? user
+  };
 }
 
 export async function sendPendingEmails(limit = 20) {
-  const resend = getResendClient();
-  const from = process.env.RESEND_FROM_EMAIL;
-
-  if (!from) {
-    throw new Error("Не настроен email отправителя");
-  }
+  const { user, pass, from } = getGoogleSmtpConfig();
+  const transporter = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
+    auth: {
+      user,
+      pass
+    }
+  });
 
   const deliveries = await prisma.emailDelivery.findMany({
     where: {
@@ -34,9 +47,9 @@ export async function sendPendingEmails(limit = 20) {
 
   for (const delivery of deliveries) {
     try {
-      await resend.emails.send({
+      await transporter.sendMail({
         from,
-        to: [delivery.toEmail],
+        to: delivery.toEmail,
         subject: delivery.subject,
         text: delivery.body
       });

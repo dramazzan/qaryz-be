@@ -541,7 +541,7 @@ export async function getRecentContacts(userId: string) {
 }
 
 export async function getAddPageData(userId: string) {
-  const [groupMemberships, recentContacts] = await Promise.all([
+  const [groupMemberships, recentContacts, platformUsers] = await Promise.all([
     prisma.groupMember.findMany({
       where: { userId },
       include: {
@@ -559,7 +559,8 @@ export async function getAddPageData(userId: string) {
         createdAt: "asc"
       }
     }),
-    getRecentContacts(userId)
+    getRecentContacts(userId),
+    getPlatformUsersData(userId)
   ]);
 
   return {
@@ -573,7 +574,8 @@ export async function getAddPageData(userId: string) {
         image: member.user.image
       }))
     })),
-    recentContacts
+    recentContacts,
+    platformUsers
   };
 }
 
